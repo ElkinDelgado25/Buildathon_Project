@@ -49,6 +49,29 @@ python -m venv .venv
 
 Use the `localhost` database URL already provided in `.env.example` for this mode.
 
+### Deploy on Render
+
+The repository includes `render.yaml`, which creates a Docker web service and
+a managed PostgreSQL database. It is intended for the hackathon MVP; the CLI
+remains the primary user interface.
+
+1. Push this repository to GitHub.
+2. In Render, create a **Blueprint** and select the repository.
+3. Set `OPENAI_API_KEY` when Render prompts for the secret, then apply the Blueprint.
+4. After deployment, copy the public service URL and point the CLI to it:
+
+```powershell
+python -m app.cli --api-url https://your-service.onrender.com health
+```
+
+For a fresh MVP database, Render starts with `APP_ENV=development` so the API
+creates its tables. Before production use, replace this bootstrap behavior
+with versioned Alembic migrations and add CLI/API-key authentication.
+
+The current `docker-compose.yml` is for local development only. SonarQube and
+OWASP ZAP are not deployed by this Blueprint; configure their reachable URLs
+and tokens in Render only when the scanner integrations are ready.
+
 ## 📡 Core Endpoints
 
 | Method | Endpoint | Description |

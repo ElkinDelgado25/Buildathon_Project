@@ -13,8 +13,20 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 # ── Engine ────────────────────────────────────────────────────
+_database_url = settings.DATABASE_URL
+# Render provides a standard PostgreSQL URL. SQLAlchemy's async engine needs
+# the asyncpg dialect prefix used by this application.
+if _database_url.startswith("postgres://"):
+    _database_url = _database_url.replace(
+        "postgres://", "postgresql+asyncpg://", 1
+    )
+elif _database_url.startswith("postgresql://"):
+    _database_url = _database_url.replace(
+        "postgresql://", "postgresql+asyncpg://", 1
+    )
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _database_url,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
     pool_size=10,
