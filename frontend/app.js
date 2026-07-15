@@ -32,21 +32,48 @@ function renderResult(target, data, title) { target.classList.remove("hidden"); 
 function terminalWrite(text, kind = "success") { const item = document.createElement("pre"); item.className = `terminal-entry ${kind}`; item.textContent = text; $("#web-terminal-output").append(item); $("#web-terminal-output").scrollTop = $("#web-terminal-output").scrollHeight; return item; }
 function resetTerminal() { $("#web-terminal-output").innerHTML = ""; $("#terminal-prompt").textContent = `${state.operator || "operator"}@cybersec:~$`; terminalWrite("CYBERSEC AGENT WEB CLI\nType /help to list available audit operations.\nOnly use authorized targets.", "muted"); }
 function splitCommand(input) { const parts = []; let current = ""; let quote = null; for (const char of input.trim()) { if ((char === "'" || char === '"') && !quote) { quote = char; continue; } if (char === quote) { quote = null; continue; } if (/\s/.test(char) && !quote) { if (current) { parts.push(current); current = ""; } } else current += char; } if (quote) throw new Error("Unclosed quote in command."); if (current) parts.push(current); return parts; }
-function commandRequest(input) {
-  const parts = splitCommand(input); const commandParts = []; const context = { target: null, instruction: null, reviewed_by: state.operator || null, review_comment: null };
+function optionsFrom(tokens) { const options = {}; for (let index = 0; index < tokens.length; index += 1) { if (!tokens[index].startsWith("--")) continue; const key = tokens[index].slice(2); options[key] = tokens[index + 1] && !tokens[index + 1].startsWith("--") ? tokens[++index] : true; } return options; }
+function terminalHelp() { return `Available commands:
+  /help
+  /status | /dashboard
+  /owasp audit A01...A10 --target <authorized-target> --instruction "text"
+  /findings list
+  /decisions list | /decisions show <decision-id>
+  /review <decision-id> <agree|disagree|escalate> --by <name> --comment "text"
+  health
+  usage
+  decisions list | decisions get <decision-id>
+  findings list | findings get <finding-id>
+  findings analyze --source sonarqube|zap --payload '{"rule":"..."}'
+  reviews list | audit list | audit decision <decision-id>
+  audit review <decision-id> --by <name> --verdict agree|disagree|escalate --comment "text"
+  audits plan <target> --type sast|dast|full [--authorize-dast]
+  audits get <audit-id> | audits trace <audit-id>
+  audits add-finding <audit-id> --source sonarqube|zap --payload '{"rule":"..."}' [--rule-id <id>]
+  rules list [--source sonarqube|zap] [--severity high] [--cwe-id 89]
+  rules sync sonarqube|zap
+  clear`; }
+function summary(items, fields) { return items.length ? items.map((item) => fields.map((field) => `${field}: ${item[field] ?? "—"}`).join(" | ")).join("\n") : "No records found."; }
+function dispatcherRequest(parts, options) {
+  const commandParts = [];
   for (let index = 0; index < parts.length; index += 1) {
-    const token = parts[index];
-    if (!token.startsWith("--")) { commandParts.push(token); continue; }
-    const key = token.slice(2); const value = parts[index + 1] && !parts[index + 1].startsWith("--") ? parts[++index] : null;
-    if (key === "target") context.target = value;
-    if (key === "instruction") context.instruction = value;
-    if (key === "by") context.reviewed_by = value;
-    if (key === "comment") context.review_comment = value;
+    if (!parts[index].startsWith("--")) { commandParts.push(parts[index]); continue; }
+    if (parts[index + 1] && !parts[index + 1].startsWith("--")) index += 1;
   }
-  if (!commandParts.length) throw new Error("A command is required.");
-  return { command: `/${commandParts.join(" ").replace(/^\//, "")}`, ...context };
+  return {
+    command: `/${commandParts.join(" ").replace(/^\//, "")}`,
+    target: options.target || null,
+    instruction: options.instruction || null,
+    reviewed_by: options.by || state.operator || null,
+    review_comment: options.comment || null,
+  };
 }
-function formatCommandResponse(result) {
+function isDispatcherCommand(parts) {
+  const first = parts[0]?.replace(/^\//, "").toLowerCase();
+  const second = parts[1]?.toLowerCase();
+  return first === "help" || first === "status" || first === "dashboard" || first === "owasp" || (first === "findings" && second === "list") || (first === "decisions" && ["list", "show"].includes(second)) || first === "review";
+}
+function formatDispatcherResult(result) {
   const lines = [`[${result.status}] ${result.message}`];
   if (result.data != null) lines.push(JSON.stringify(result.data, null, 2));
   if (result.suggestions?.length) lines.push(`Next: ${result.suggestions.join(" | ")}`);
@@ -54,12 +81,28 @@ function formatCommandResponse(result) {
 }
 async function executeTerminal(input) {
   const command = input.trim(); if (!command) return; terminalWrite(`${state.operator || "operator"}@cybersec:~$ ${command}`, "command");
-  if (command.replace(/^\//, "").toLowerCase() === "clear") { resetTerminal(); return; }
-  let loading; try {
-    loading = terminalWrite("Executing approved command…", "muted");
-    const result = await api("/api/v1/commands", { method: "POST", body: JSON.stringify(commandRequest(command)) });
-    loading.remove(); terminalWrite(formatCommandResponse(result), "success");
-    if (result.result_type === "dashboard") loadDashboard();
+  let loading; try { const parts = splitCommand(command); parts[0] = parts[0].replace(/^\//, "").toLowerCase(); const options = optionsFrom(parts); loading = terminalWrite("⠋ Executing API operation…", "muted"); let output;
+    if (parts[0] === "clear") { resetTerminal(); return; }
+    else if (isDispatcherCommand(parts)) { const result = await api("/api/v1/commands", {method:"POST",body:JSON.stringify(dispatcherRequest(parts, options))}); output = formatDispatcherResult(result); if (result.result_type === "dashboard") loadDashboard(); }
+    else if (parts[0] === "health") { const health = await api("/health"); output = JSON.stringify(health, null, 2); }
+    else if (parts[0] === "dashboard") { const [health, usage] = await Promise.all([api("/health"), api("/api/v1/decisions/usage")]); output = `API: ${health.status}\nDATABASE: ${health.database}\nLLM: ${health.llm_provider}\nTOKENS: ${usage.total_tokens} total (${usage.prompt_tokens} input / ${usage.completion_tokens} output)`; loadDashboard(); }
+    else if (parts[0] === "usage") { const usage = await api("/api/v1/decisions/usage"); output = `ANALYSES: ${usage.analyzed_decisions}\nTOTAL TOKENS: ${usage.total_tokens}\nINPUT TOKENS: ${usage.prompt_tokens}\nOUTPUT TOKENS: ${usage.completion_tokens}`; }
+    else if (parts[0] === "decisions" && parts[1] === "list") { const data = await api("/api/v1/decisions/?limit=50"); output = summary(data, ["id", "final_decision", "severity_assessed", "confidence_score", "total_tokens"]); }
+    else if (parts[0] === "decisions" && parts[1] === "get" && parts[2]) { const data = await api(`/api/v1/decisions/${parts[2]}`); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "findings" && parts[1] === "list") { const data = await api("/api/v1/findings/?limit=50"); output = summary(data, ["id", "source", "created_at"]); }
+    else if (parts[0] === "findings" && parts[1] === "get" && parts[2]) { const data = await api(`/api/v1/findings/${parts[2]}`); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "findings" && parts[1] === "analyze" && options.source && options.payload) { const data = await api("/api/v1/findings/analyze", {method:"POST",body:JSON.stringify({source:options.source,raw_payload:JSON.parse(options.payload)})}); output = JSON.stringify(data, null, 2); loadDashboard(); }
+    else if ((parts[0] === "reviews" && parts[1] === "list") || (parts[0] === "audit" && parts[1] === "list")) { const data = await api("/api/v1/audit/reviews?limit=50"); output = summary(data, ["id", "reviewed_by", "review_verdict", "reviewed_at"]); }
+    else if (parts[0] === "audit" && parts[1] === "decision" && parts[2]) { const data = await api(`/api/v1/audit/decision/${parts[2]}/reviews`); output = summary(data, ["id", "reviewed_by", "review_verdict", "review_comment", "reviewed_at"]); }
+    else if (parts[0] === "audit" && parts[1] === "review" && parts[2] && options.by && options.verdict) { const data = await api("/api/v1/audit/review", {method:"POST",body:JSON.stringify({decision_id:parts[2],reviewed_by:options.by,review_verdict:options.verdict,review_comment:options.comment || null})}); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "audits" && parts[1] === "plan" && parts[2] && options.type) { const data = await api("/api/v1/audits/plan", {method:"POST",body:JSON.stringify({target:parts[2],scan_type:options.type,dast_authorized:Boolean(options["authorize-dast"])})}); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "audits" && parts[1] === "get" && parts[2]) { const data = await api(`/api/v1/audits/${parts[2]}`); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "audits" && parts[1] === "trace" && parts[2]) { const data = await api(`/api/v1/audits/${parts[2]}/trace`); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "audits" && parts[1] === "add-finding" && parts[2] && options.source && options.payload) { const body = {source:options.source,raw_payload:JSON.parse(options.payload)}; if (options["rule-id"]) body.security_rule_id = options["rule-id"]; const data = await api(`/api/v1/audits/${parts[2]}/findings`, {method:"POST",body:JSON.stringify(body)}); output = JSON.stringify(data, null, 2); }
+    else if (parts[0] === "rules" && parts[1] === "list") { const params = new URLSearchParams({limit:"50",offset:"0"}); ["source","severity","cwe-id","owasp-category"].forEach((key) => { if (options[key]) params.set(key.replaceAll("-", "_"), options[key]); }); const data = await api(`/api/v1/rules?${params}`); output = summary(data, ["id", "source", "external_id", "title", "severity", "cwe_id"]); }
+    else if (parts[0] === "rules" && parts[1] === "sync" && ["sonarqube", "zap"].includes(parts[2])) { const data = await api(`/api/v1/rules/sync/${parts[2]}`, {method:"POST"}); output = `${data.length} rules synchronized from ${parts[2]}.\n${summary(data.slice(0, 10), ["external_id", "title", "severity"])}`; }
+    else throw new Error("Unknown command. Type help for supported operations.");
+    loading.remove(); terminalWrite(output, "success");
   } catch (error) { loading?.remove(); terminalWrite(`✗ ${error.message}`, "error"); }
 }
 
