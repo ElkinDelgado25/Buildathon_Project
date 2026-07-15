@@ -96,6 +96,9 @@ With the API running, the project can be operated without Swagger or `curl`:
 # Check the service
 python -m app.cli health
 
+# SOC-style overview (similar to a fastfetch status screen)
+python -m app.cli dashboard
+
 # Analyze a SonarQube finding stored as a JSON object
 python -m app.cli findings analyze --source sonarqube --file finding.json
 
@@ -129,6 +132,11 @@ python -m app.cli --api-url http://localhost:8000 --json decisions list
 Run `python -m app.cli --help` (or add `--help` to any subcommand) for the full
 command reference. Finding input accepts `--payload '{...}'`, `--file PATH`, or
 `--file -` for standard input.
+
+For an optional logo rendered as terminal art, install `chafa` and place an image
+at `assent/Logo-terminal.png` (a transparent-background PNG) or `assent/Logo.png`.
+The `dashboard` command uses it automatically and falls back to the built-in ASCII
+banner when it is unavailable.
 
 ## 🧪 Example: Analyze a Simulated Finding
 

@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -83,9 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds")
     parser.add_argument("--json", action="store_true", help="Print raw JSON output")
+    parser.add_argument("--no-color", action="store_true", help="Disable terminal colors")
 
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("health", help="Check API and database health")
+    commands.add_parser("dashboard", help="Show a compact SOC-style operational overview")
 
     findings = commands.add_parser("findings", help="Analyze and inspect findings")
     finding_commands = findings.add_subparsers(dest="findings_command", required=True)
@@ -190,6 +195,18 @@ def execute(client: APIClient, args: argparse.Namespace) -> tuple[Any, str]:
     if args.command == "health":
         return client.request("GET", "/health"), "detail"
 
+    if args.command == "dashboard":
+        health = client.request("GET", "/health")
+        decisions = client.request("GET", "/api/v1/decisions/", params={"limit": 5, "offset": 0})
+        findings = client.request("GET", "/api/v1/findings/", params={"limit": 5, "offset": 0})
+        reviews = client.request("GET", "/api/v1/audit/reviews", params={"limit": 5, "offset": 0})
+        return {
+            "health": health,
+            "recent_decisions": decisions,
+            "recent_findings": findings,
+            "recent_reviews": reviews,
+        }, "dashboard"
+
     if args.command == "findings":
         if args.findings_command == "list":
             params = {"limit": args.limit, "offset": args.offset}
@@ -274,21 +291,174 @@ def _short(value: Any, maximum: int = 36) -> str:
     return text if len(text) <= maximum else text[: maximum - 1] + "…"
 
 
-def render(data: Any, display_type: str, raw_json: bool = False) -> None:
-    if raw_json or display_type == "detail":
+class Theme:
+    """Minimal ANSI theme; output remains readable when color is disabled."""
+
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+
+    def paint(self, value: Any, code: str) -> str:
+        text = str(value)
+        return f"\033[{code}m{text}\033[0m" if self.enabled else text
+
+    def good(self, value: Any) -> str:
+        return self.paint(value, "1;32")
+
+    def warn(self, value: Any) -> str:
+        return self.paint(value, "1;33")
+
+    def bad(self, value: Any) -> str:
+        return self.paint(value, "1;31")
+
+    def info(self, value: Any) -> str:
+        return self.paint(value, "1;36")
+
+    def muted(self, value: Any) -> str:
+        return self.paint(value, "2")
+
+
+def _status(value: Any, theme: Theme) -> str:
+    text = _short(value)
+    lowered = text.lower()
+    if lowered in {"healthy", "connected", "agree", "amenaza_confirmada", "critical"}:
+        return theme.good(text)
+    if lowered in {"degraded", "disagree", "escalate", "high", "medium"}:
+        return theme.warn(text)
+    if lowered in {"error", "disconnected", "low", "falso_positivo"}:
+        return theme.bad(text)
+    return text
+
+
+def _print_banner(theme: Theme) -> None:
+    print(theme.info("╔═╗┬ ┬┌┐ ┌─┐┬─┐  ╔═╗┌─┐┌─┐┌┐┌┌┬┐"))
+    print(theme.info("║  └┬┘├┴┐├┤ ├┬┘  ╠═╣│ ┬├┤ │││ │ "))
+    print(theme.info("╚═╝ ┴ └─┘└─┘┴└─  ╩ ╩└─┘└─┘┘└┘ ┴ "))
+    print(theme.muted("Security operations console · human-reviewed AI decisions"))
+
+
+def _print_logo_art(theme: Theme) -> bool:
+    """Render the optional project logo with chafa, if the terminal supports it."""
+    asset_dir = Path(__file__).resolve().parent.parent / "assent"
+    logo_path = asset_dir / "Logo-terminal.png"
+    if not logo_path.is_file():
+        logo_path = asset_dir / "Logo.png"
+    chafa = shutil.which("chafa")
+    if not chafa or not logo_path.is_file():
+        return False
+    result = subprocess.run(
+        [
+            chafa,
+            str(logo_path),
+            "--format=symbols",
+            "--size=45x18",
+            "--fg-only",
+            "--colors=16" if theme.enabled else "--colors=none",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    print(result.stdout.rstrip())
+    print(theme.muted("CyberSec Agent · security operations console"))
+    return True
+
+
+def _print_detail(data: dict[str, Any], theme: Theme) -> None:
+    title = "DECISION RECORD" if "final_decision" in data else "RESPONSE"
+    print(theme.info(f"\n┌─ {title} " + "─" * max(0, 58 - len(title)) + "┐"))
+    priority = (
+        "id", "final_decision", "severity_assessed", "confidence_score", "suggested_action",
+        "status", "database", "llm_provider", "environment", "review_verdict", "reviewed_by",
+    )
+    printed = set()
+    def print_field(key: str, value: Any) -> None:
+        label = key.replace("_", " ").upper() + ":"
+        rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+        lines = textwrap.wrap(rendered, width=47, break_long_words=False) or ["-"]
+        print(f"│ {theme.muted(label):<22} {lines[0]}")
+        for line in lines[1:]:
+            print(f"│ {'':22} {line}")
+
+    for key in priority:
+        if key not in data:
+            continue
+        printed.add(key)
+        value = data[key]
+        if key in {"final_decision", "severity_assessed", "status", "database", "review_verdict"}:
+            value = _status(value, theme)
+        print_field(key, value)
+    for key, value in data.items():
+        if key in printed or key in {"prompt_used", "finding", "raw_payload"}:
+            continue
+        print_field(key, value)
+    if "finding" in data:
+        finding = data["finding"]
+        print("│")
+        print(f"│ {theme.info('EVIDENCE')}  {finding.get('source', '-')} · {finding.get('id', '-')}")
+        raw_lines = textwrap.wrap(
+            json.dumps(finding.get("raw_payload", {}), ensure_ascii=False), width=61, break_long_words=False
+        )
+        print(f"│ {theme.muted('RAW:')} {raw_lines[0] if raw_lines else '-'}")
+        for line in raw_lines[1:]:
+            print(f"│      {line}")
+    print(theme.info("└" + "─" * 72 + "┘"))
+
+
+def _print_dashboard(data: dict[str, Any], theme: Theme) -> None:
+    if not _print_logo_art(theme):
+        _print_banner(theme)
+    health = data["health"]
+    print("\n" + theme.info("SYSTEM STATUS"))
+    print(
+        f"  API  {_status(health.get('status'), theme):<18} "
+        f"DB  {_status(health.get('database'), theme):<18} "
+        f"LLM  {health.get('llm_provider', '-') }"
+    )
+    print("\n" + theme.info("RECENT ACTIVITY"))
+    print(f"  Findings:  {len(data['recent_findings']):>2} visible")
+    print(f"  Decisions: {len(data['recent_decisions']):>2} visible")
+    print(f"  Reviews:   {len(data['recent_reviews']):>2} visible")
+    if data["recent_decisions"]:
+        print("\n" + theme.info("LATEST DECISIONS"))
+        for decision in data["recent_decisions"]:
+            severity = _status(decision.get("severity_assessed"), theme)
+            print(f"  • {severity:<18} {_short(decision.get('final_decision'), 28):<28} {decision.get('id')}")
+    print("\n" + theme.muted("Tip: use `decisions get <id>` to inspect the complete evidence trail."))
+
+
+def render(
+    data: Any,
+    display_type: str,
+    raw_json: bool = False,
+    color: bool | None = None,
+) -> None:
+    if raw_json:
         print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    theme = Theme(sys.stdout.isatty() if color is None else color)
+    if display_type == "dashboard":
+        _print_dashboard(data, theme)
+        return
+    if display_type == "detail":
+        _print_detail(data, theme)
         return
     rows = data if isinstance(data, list) else [data]
     if not rows:
-        print("No results.")
+        print(theme.muted("No results."))
         return
     columns = TABLE_COLUMNS[display_type]
     values = [[_short(row.get(column)) for column in columns] for row in rows]
     widths = [max(len(column), *(len(row[index]) for row in values)) for index, column in enumerate(columns)]
-    print("  ".join(column.upper().ljust(widths[index]) for index, column in enumerate(columns)))
-    print("  ".join("-" * width for width in widths))
+    print(theme.info("  ".join(column.upper().ljust(widths[index]) for index, column in enumerate(columns))))
+    print(theme.muted("  ".join("─" * width for width in widths)))
     for row in values:
-        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+        painted = [
+            _status(value, theme) if columns[index] in {"severity", "severity_assessed", "final_decision", "review_verdict"} else value
+            for index, value in enumerate(row)
+        ]
+        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(painted)))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -299,7 +469,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         with APIClient(args.api_url, args.timeout) as client:
             data, display_type = execute(client, args)
-        render(data, display_type, args.json)
+        render(data, display_type, args.json, color=not args.no_color)
         if args.command == "health" and data.get("status") != "healthy":
             return 1
         return 0
