@@ -1,0 +1,22 @@
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
+
+# LLM
+google-genai
+
+# Validation & Serialization
+pydantic>=2.13
+pydantic-settings
+
+# HTTP client (for sensor APIs)
+httpx
+
+# Utilities
+uuid7
