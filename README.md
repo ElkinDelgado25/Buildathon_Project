@@ -99,6 +99,10 @@ python -m app.cli health
 # SOC-style overview (similar to a fastfetch status screen)
 python -m app.cli dashboard
 
+# Persistent interactive console; run audits without returning to the shell
+# Close it with Ctrl+C.
+python -m app.cli console
+
 # Analyze a SonarQube finding stored as a JSON object
 python -m app.cli findings analyze --source sonarqube --file finding.json
 

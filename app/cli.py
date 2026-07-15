@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import textwrap
@@ -91,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("health", help="Check API and database health")
     commands.add_parser("dashboard", help="Show a compact SOC-style operational overview")
+    commands.add_parser("console", help="Open a persistent interactive SOC console (Ctrl+C to close)")
 
     findings = commands.add_parser("findings", help="Analyze and inspect findings")
     finding_commands = findings.add_subparsers(dest="findings_command", required=True)
@@ -461,11 +463,69 @@ def render(
         print("  ".join(value.ljust(widths[index]) for index, value in enumerate(painted)))
 
 
+def _console_help() -> None:
+    print(
+        "\nCommands available inside the console:\n"
+        "  dashboard                              Refresh the SOC overview\n"
+        "  findings analyze --source ... --payload ...\n"
+        "  findings list | findings get <id>\n"
+        "  decisions list | decisions get <id>\n"
+        "  audit review <decision-id> --by <name> --verdict agree|disagree|escalate\n"
+        "  audit decision <decision-id>\n"
+        "  rules list | rules sync sonarqube|zap\n"
+        "  audits plan <target> --type sast|dast|full\n"
+        "\nType help to show this message again. Press Ctrl+C to close the console.\n"
+    )
+
+
+def run_console(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Run commands against the API without leaving the SOC terminal session."""
+    print("Opening CyberSec Agent console. Press Ctrl+C to close.")
+    with APIClient(args.api_url, args.timeout) as client:
+        try:
+            dashboard_args = parser.parse_args(["dashboard"])
+            data, display_type = execute(client, dashboard_args)
+            render(data, display_type, args.json, color=not args.no_color)
+            _console_help()
+            while True:
+                try:
+                    line = input("cybersec> ").strip()
+                except EOFError:
+                    print("\nUse Ctrl+C to close the console.")
+                    continue
+                if not line:
+                    continue
+                if line in {"help", "?"}:
+                    _console_help()
+                    continue
+                if line in {"exit", "quit"}:
+                    print("Use Ctrl+C to close the console.")
+                    continue
+                try:
+                    command_args = parser.parse_args(shlex.split(line))
+                except SystemExit:
+                    print("Invalid command. Type help for examples.")
+                    continue
+                if command_args.command == "console":
+                    print("You are already in the interactive console.")
+                    continue
+                try:
+                    data, display_type = execute(client, command_args)
+                    render(data, display_type, args.json or command_args.json, color=not args.no_color)
+                except CLIError as exc:
+                    print(f"error: {exc}", file=sys.stderr)
+        except KeyboardInterrupt:
+            print("\nCyberSec Agent console closed.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
+    if args.command == "console":
+        return run_console(parser, args)
     try:
         with APIClient(args.api_url, args.timeout) as client:
             data, display_type = execute(client, args)
