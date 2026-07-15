@@ -60,6 +60,39 @@ Use the `localhost` database URL already provided in `.env.example` for this mod
 | `POST` | `/api/v1/audit/review` | Submit a human review |
 | `GET` | `/api/v1/audit/reviews` | List all audit reviews |
 
+## 💻 Command-line client
+
+With the API running, the project can be operated without Swagger or `curl`:
+
+```bash
+# Check the service
+python -m app.cli health
+
+# Analyze a SonarQube finding stored as a JSON object
+python -m app.cli findings analyze --source sonarqube --file finding.json
+
+# Browse the traceability data
+python -m app.cli findings list --source sonarqube
+python -m app.cli decisions list
+python -m app.cli decisions get DECISION_ID
+
+# Record and inspect a human review
+python -m app.cli audit review DECISION_ID --by alice --verdict agree --comment "Verified"
+python -m app.cli audit decision DECISION_ID
+```
+
+The default API URL is `http://localhost:8000`. Override it with the global
+option `--api-url` or the `CYBERSEC_API_URL` environment variable. Add the
+global `--json` option before the command to obtain machine-readable output:
+
+```bash
+python -m app.cli --api-url http://localhost:8000 --json decisions list
+```
+
+Run `python -m app.cli --help` (or add `--help` to any subcommand) for the full
+command reference. Finding input accepts `--payload '{...}'`, `--file PATH`, or
+`--file -` for standard input.
+
 ## 🧪 Example: Analyze a Simulated Finding
 
 ```bash
