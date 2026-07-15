@@ -65,6 +65,31 @@ class ZAPClient:
             logger.info(f"Fetched {len(alerts)} alerts from ZAP")
             return alerts
 
+    async def fetch_rules(self) -> list[dict]:
+        """Download active and passive ZAP scanner-rule metadata."""
+        params = {"apikey": self.api_key}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            active_response = await client.get(
+                f"{self.base_url}/JSON/ascan/view/scanners/", params=params
+            )
+            passive_response = await client.get(
+                f"{self.base_url}/JSON/pscan/view/scanners/", params=params
+            )
+            active_response.raise_for_status()
+            passive_response.raise_for_status()
+
+        active_rules = active_response.json().get("scanners", [])
+        passive_rules = passive_response.json().get("scanners", [])
+        rules = [
+            {**rule, "scannerType": "active"}
+            for rule in active_rules
+        ] + [
+            {**rule, "scannerType": "passive"}
+            for rule in passive_rules
+        ]
+        logger.info("Fetched %s scanner rules from ZAP", len(rules))
+        return rules
+
     @staticmethod
     def parse_json_report(report_path: str) -> list[dict]:
         """

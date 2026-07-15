@@ -13,7 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import findings_router, decisions_router, audit_router
+from app.routers import (
+    audit_router,
+    audits_router,
+    decisions_router,
+    findings_router,
+    rules_router,
+)
 
 # ── Logging ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -72,6 +78,8 @@ app.add_middleware(
 app.include_router(findings_router, prefix="/api/v1")
 app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
+app.include_router(audits_router, prefix="/api/v1")
+app.include_router(rules_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])
@@ -87,6 +95,9 @@ async def root():
             "list_decisions": "GET /api/v1/decisions/",
             "decision_detail": "GET /api/v1/decisions/{id}",
             "submit_review": "POST /api/v1/audit/review",
+            "plan_audit": "POST /api/v1/audits/plan",
+            "audit_trace": "GET /api/v1/audits/{id}/trace",
+            "security_rules": "GET /api/v1/rules",
         },
     }
 

@@ -108,6 +108,37 @@ def build_parser() -> argparse.ArgumentParser:
     decision_get.add_argument("decision_id")
     decision_get.add_argument("--show-prompt", action="store_true", help="Include the stored prompt")
 
+    rules = commands.add_parser("rules", help="Inspect and synchronize scanner rules")
+    rule_commands = rules.add_subparsers(dest="rules_command", required=True)
+    rules_list = rule_commands.add_parser("list", help="List cached SonarQube/ZAP rules")
+    _add_pagination(rules_list)
+    rules_list.add_argument("--source", choices=("sonarqube", "zap"))
+    rules_list.add_argument("--severity")
+    rules_list.add_argument("--cwe-id")
+    rules_list.add_argument("--owasp-category")
+    rules_sync = rule_commands.add_parser("sync", help="Download rules from a configured scanner")
+    rules_sync.add_argument("source", choices=("sonarqube", "zap"))
+
+    audits = commands.add_parser("audits", help="Plan and inspect bounded security audits")
+    audit_run_commands = audits.add_subparsers(dest="audits_command", required=True)
+    audit_plan = audit_run_commands.add_parser("plan", help="Create an audit without scanning")
+    audit_plan.add_argument("target", help="Authorized repository, image, or URL")
+    audit_plan.add_argument("--type", dest="scan_type", required=True, choices=("sast", "dast", "full"))
+    audit_plan.add_argument("--authorize-dast", action="store_true")
+    audit_get = audit_run_commands.add_parser("get", help="Get audit status and decision")
+    audit_get.add_argument("audit_id")
+    audit_trace = audit_run_commands.add_parser("trace", help="Show full audit evidence")
+    audit_trace.add_argument("audit_id")
+    audit_add_finding = audit_run_commands.add_parser(
+        "add-finding", help="Attach scanner evidence and evaluate policy"
+    )
+    audit_add_finding.add_argument("audit_id")
+    audit_add_finding.add_argument("--source", required=True, choices=("sonarqube", "zap"))
+    audit_add_finding.add_argument("--rule-id")
+    audit_payload = audit_add_finding.add_mutually_exclusive_group(required=True)
+    audit_payload.add_argument("--payload", help="Raw payload as a JSON object")
+    audit_payload.add_argument("--file", type=Path, help="JSON file; use - to read stdin")
+
     audit = commands.add_parser("audit", help="Submit and inspect human reviews")
     audit_commands = audit.add_subparsers(dest="audit_command", required=True)
     audit_list = audit_commands.add_parser("list", help="List all reviews")
@@ -179,6 +210,40 @@ def execute(client: APIClient, args: argparse.Namespace) -> tuple[Any, str]:
             data = {key: value for key, value in data.items() if key != "prompt_used"}
         return data, "detail"
 
+    if args.command == "rules":
+        if args.rules_command == "sync":
+            return client.request("POST", f"/api/v1/rules/sync/{args.source}"), "rules"
+        params = {
+            "limit": args.limit,
+            "offset": args.offset,
+            "source": args.source,
+            "severity": args.severity,
+            "cwe_id": args.cwe_id,
+            "owasp_category": args.owasp_category,
+        }
+        return client.request(
+            "GET", "/api/v1/rules", params={key: value for key, value in params.items() if value}
+        ), "rules"
+
+    if args.command == "audits":
+        if args.audits_command == "plan":
+            body = {
+                "target": args.target,
+                "scan_type": args.scan_type,
+                "dast_authorized": args.authorize_dast,
+            }
+            return client.request("POST", "/api/v1/audits/plan", json=body), "detail"
+        if args.audits_command == "get":
+            return client.request("GET", f"/api/v1/audits/{args.audit_id}"), "detail"
+        if args.audits_command == "trace":
+            return client.request("GET", f"/api/v1/audits/{args.audit_id}/trace"), "detail"
+        body = {"source": args.source, "raw_payload": _read_payload(args)}
+        if args.rule_id:
+            body["security_rule_id"] = args.rule_id
+        return client.request(
+            "POST", f"/api/v1/audits/{args.audit_id}/findings", json=body
+        ), "detail"
+
     if args.audit_command == "list":
         params = {"limit": args.limit, "offset": args.offset}
         return client.request("GET", "/api/v1/audit/reviews", params=params), "reviews"
@@ -200,6 +265,7 @@ TABLE_COLUMNS = {
     "findings": ("id", "source", "created_at"),
     "decisions": ("id", "final_decision", "severity_assessed", "confidence_score", "created_at"),
     "reviews": ("id", "decision_id", "reviewed_by", "review_verdict", "reviewed_at"),
+    "rules": ("id", "source", "external_id", "title", "severity", "cwe_id"),
 }
 
 

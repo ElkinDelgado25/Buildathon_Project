@@ -59,6 +59,11 @@ Use the `localhost` database URL already provided in `.env.example` for this mod
 | `GET` | `/api/v1/decisions/{id}` | Full decision detail with audit summary |
 | `POST` | `/api/v1/audit/review` | Submit a human review |
 | `GET` | `/api/v1/audit/reviews` | List all audit reviews |
+| `POST` | `/api/v1/audits/plan` | Create a bounded SAST/DAST audit plan |
+| `POST` | `/api/v1/audits/{id}/findings` | Attach scanner evidence and evaluate policy |
+| `GET` | `/api/v1/audits/{id}/trace` | Retrieve normalized evidence and the policy decision |
+| `GET` | `/api/v1/rules` | List the cached SonarQube/ZAP rule catalog |
+| `POST` | `/api/v1/rules/sync/{source}` | Synchronize configured scanner rules |
 
 ## 💻 Command-line client
 
@@ -79,6 +84,15 @@ python -m app.cli decisions get DECISION_ID
 # Record and inspect a human review
 python -m app.cli audit review DECISION_ID --by alice --verdict agree --comment "Verified"
 python -m app.cli audit decision DECISION_ID
+
+# Plan a bounded audit and attach a scanner finding
+python -m app.cli audits plan demo-repository --type sast
+python -m app.cli audits add-finding AUDIT_ID --source sonarqube --file finding.json
+python -m app.cli audits trace AUDIT_ID
+
+# Synchronize and inspect configured scanner rules
+python -m app.cli rules sync sonarqube
+python -m app.cli rules list --source sonarqube
 ```
 
 The default API URL is `http://localhost:8000`. Override it with the global

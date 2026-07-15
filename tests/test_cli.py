@@ -72,6 +72,47 @@ class CLITests(unittest.TestCase):
             with self.assertRaisesRegex(CLIError, "must be a JSON object"):
                 execute(client, args)
 
+    def test_audit_plan_uses_api_without_database_access(self) -> None:
+        request_seen = None
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal request_seen
+            request_seen = request
+            return httpx.Response(201, json={"id": "audit-1"})
+
+        args = build_parser().parse_args(
+            ["audits", "plan", "demo-repository", "--type", "sast"]
+        )
+        with APIClient("http://test", transport=httpx.MockTransport(handler)) as client:
+            data, display_type = execute(client, args)
+
+        self.assertEqual(data, {"id": "audit-1"})
+        self.assertEqual(display_type, "detail")
+        self.assertEqual(request_seen.url.path, "/api/v1/audits/plan")
+        self.assertEqual(
+            json.loads(request_seen.content),
+            {
+                "target": "demo-repository",
+                "scan_type": "sast",
+                "dast_authorized": False,
+            },
+        )
+
+    def test_rule_sync_targets_configured_scanner_api(self) -> None:
+        request_seen = None
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal request_seen
+            request_seen = request
+            return httpx.Response(200, json=[])
+
+        args = build_parser().parse_args(["rules", "sync", "sonarqube"])
+        with APIClient("http://test", transport=httpx.MockTransport(handler)) as client:
+            execute(client, args)
+
+        self.assertEqual(request_seen.method, "POST")
+        self.assertEqual(request_seen.url.path, "/api/v1/rules/sync/sonarqube")
+
 
 if __name__ == "__main__":
     unittest.main()

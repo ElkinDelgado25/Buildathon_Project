@@ -62,3 +62,31 @@ class SonarQubeClient:
                 f"from SonarQube (total: {data.get('total', 0)})"
             )
             return data.get("issues", [])
+
+    async def fetch_rules(
+        self,
+        language: str | None = None,
+        page_size: int = 500,
+    ) -> list[dict]:
+        """Download active SonarQube rule metadata for the local rule catalog."""
+        page = 1
+        rules: list[dict] = []
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            while True:
+                params = {"p": page, "ps": min(page_size, 500)}
+                if language:
+                    params["languages"] = language
+                response = await client.get(
+                    f"{self.base_url}/api/rules/search",
+                    params=params,
+                    headers={"Authorization": f"Bearer {self.token}"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                batch = data.get("rules", [])
+                rules.extend(batch)
+                if len(rules) >= data.get("total", 0) or not batch:
+                    break
+                page += 1
+        logger.info("Fetched %s rules from SonarQube", len(rules))
+        return rules

@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4.1-mini"
 
+    # Scanner integrations
+    SONARQUBE_BASE_URL: str = ""
+    SONARQUBE_TOKEN: str = ""
+    ZAP_BASE_URL: str = "http://localhost:8080"
+    ZAP_API_KEY: str = ""
+
     # ── App ──────────────────────────────────────────────────
     APP_ENV: Literal["development", "staging", "production"] = "development"
     LOG_LEVEL: str = "INFO"
@@ -27,6 +33,7 @@ class Settings(BaseSettings):
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
+        "extra": "ignore",
     }
 
 
