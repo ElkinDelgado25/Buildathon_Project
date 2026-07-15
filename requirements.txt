@@ -9,7 +9,7 @@ asyncpg
 alembic
 
 # LLM
-google-genai
+openai
 
 # Validation & Serialization
 pydantic>=2.13

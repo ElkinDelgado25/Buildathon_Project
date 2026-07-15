@@ -1,6 +1,6 @@
 """
 Decisions router — the traceability/audit view.
-Provides endpoints to review AI decisions and their reasoning.
+Provides endpoints to review AI decisions and their audit summaries.
 """
 
 from uuid import UUID
@@ -36,9 +36,9 @@ async def list_decisions(
 @router.get(
     "/{decision_id}",
     response_model=DecisionDetail,
-    summary="Get full decision detail with Chain of Thought",
+    summary="Get full decision detail and audit summary",
     description=(
-        "Returns the complete decision including the LLM's step-by-step reasoning, "
+        "Returns the complete decision including its evidence-based audit summary, "
         "the exact prompt used, and the original finding. This is the core "
         "traceability endpoint for auditors."
     ),
@@ -49,7 +49,7 @@ async def get_decision_detail(
 ):
     """
     The key traceability endpoint.
-    Returns: finding → prompt → chain of thought → decision → suggested action.
+    Returns: finding → prompt → audit summary → decision → suggested action.
     """
     decision = await analysis_service.get_decision_detail(decision_id, db)
 

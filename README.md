@@ -1,57 +1,62 @@
-# 🛡️ Cybersecurity Agent — Traceable Vulnerability Analysis
+# 🛡️ Cybersecurity Agent — DevSecOps Audit Assistant
 
-An intelligent agent that analyzes SAST/DAST security findings using LLM reasoning with **full Chain of Thought traceability**. Every decision is auditable and reproducible.
+An intelligent agent that analyzes SAST/DAST security findings with OpenAI and
+creates an evidence-based audit record for human review.
 
 ## 🏗️ Architecture
 
 ```
-[Sensors]  ──►  [Brain (FastAPI + LLM)]  ──►  [Traceability (PostgreSQL)]
-SonarQube        Python/FastAPI                 findings table
-OWASP ZAP        + Gemini / Ollama              decisions + CoT
-                                                audit_log
+[Sensors]  ──►  [Brain (FastAPI + OpenAI)]  ──►  [Traceability (PostgreSQL)]
+SonarQube        Python/FastAPI                   findings table
+OWASP ZAP        + GPT model                      decisions + audit summary
+                                                   audit_log
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.11+
-- PostgreSQL 15+
-- A Gemini API key (or Ollama running locally)
+- Docker Desktop with Docker Compose
+- An OpenAI API key with access to the selected model
 
 ### Setup
 
-```bash
-# 1. Create virtual environment
-python -m venv venv
-source venv/bin/activate
+```powershell
+# 1. Create the local environment file
+Copy-Item .env.example .env
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Set OPENAI_API_KEY in .env
 
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with your database URL and API keys
-
-# 4. Create the database
-createdb cybersec_agent
-
-# 5. Run the server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 3. Start PostgreSQL and the API
+docker compose up --build
 ```
 
 ### API Documentation
 Once running, visit:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
+- **Health check**: http://localhost:8000/health
+
+### Run the API outside Docker
+
+If you prefer to run FastAPI from your machine while PostgreSQL runs in Docker:
+
+```powershell
+docker compose up -d postgres
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Use the `localhost` database URL already provided in `.env.example` for this mode.
 
 ## 📡 Core Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/findings/analyze` | Analyze a security finding with LLM |
+| `POST` | `/api/v1/findings/analyze` | Analyze a security finding with OpenAI |
 | `GET` | `/api/v1/findings/` | List all raw findings |
 | `GET` | `/api/v1/decisions/` | List all AI decisions |
-| `GET` | `/api/v1/decisions/{id}` | Full decision detail with Chain of Thought |
+| `GET` | `/api/v1/decisions/{id}` | Full decision detail with audit summary |
 | `POST` | `/api/v1/audit/review` | Submit a human review |
 | `GET` | `/api/v1/audit/reviews` | List all audit reviews |
 
@@ -77,10 +82,10 @@ curl -X POST http://localhost:8000/api/v1/findings/analyze \
 ## 🔍 Traceability Flow
 
 ```
-Finding (raw data) → LLM Prompt → Chain of Thought → Decision → Human Audit
-     ↓                    ↓              ↓              ↓            ↓
-  Immutable           Stored for     Step-by-step    Verdict +    Analyst
-  in DB              reproduction    reasoning       confidence   review
+Finding (raw data) → LLM prompt → Audit summary → Decision → Human audit
+     ↓                  ↓              ↓              ↓            ↓
+  Immutable         Stored for    Evidence-based   Verdict +    Analyst
+  in DB            reproduction     rationale      confidence   review
 ```
 
 ## 📁 Project Structure
@@ -101,5 +106,5 @@ app/
 
 - **Backend**: Python 3.11+ / FastAPI
 - **Database**: PostgreSQL + SQLAlchemy (async)
-- **LLM**: Google Gemini API / Ollama (local)
+- **LLM**: OpenAI API
 - **Migrations**: Alembic

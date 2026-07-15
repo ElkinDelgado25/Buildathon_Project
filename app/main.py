@@ -2,7 +2,7 @@
 Cybersecurity Agent — FastAPI Application Entry Point
 
 An intelligent vulnerability analysis agent that converts raw security
-findings into traceable, auditable decisions using LLM reasoning.
+findings into traceable, auditable decisions using LLM analysis.
 """
 
 import logging
@@ -50,7 +50,7 @@ app = FastAPI(
     title="🛡️ Cybersecurity Agent API",
     description=(
         "An intelligent agent that analyzes SAST/DAST security findings "
-        "using LLM reasoning with full Chain of Thought traceability. "
+        "using OpenAI with evidence-based audit summaries. "
         "Every decision is auditable and reproducible."
     ),
     version="1.0.0",

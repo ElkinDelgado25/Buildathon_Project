@@ -9,18 +9,16 @@ from typing import Literal
 
 class Settings(BaseSettings):
     # ── Database ──────────────────────────────────────────────
-    DATABASE_URL: str = "sqlite+aiosqlite:///./cybersec_agent.db"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/cybersec_agent"
+    )
 
     # ── LLM Provider ─────────────────────────────────────────
-    LLM_PROVIDER: Literal["gemini", "ollama"] = "gemini"
+    LLM_PROVIDER: Literal["openai"] = "openai"
 
-    # Gemini
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
-
-    # Ollama
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3"
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4.1-mini"
 
     # ── App ──────────────────────────────────────────────────
     APP_ENV: Literal["development", "staging", "production"] = "development"

@@ -1,16 +1,15 @@
 """
-LLM Service — abstracts the interaction with Gemini or Ollama.
+LLM Service — abstracts the interaction with the OpenAI API.
 
-Builds structured prompts for vulnerability analysis and returns
-the raw LLM response along with the exact prompt used (for reproducibility).
+Builds structured prompts for vulnerability analysis and returns a concise,
+auditable rationale rather than hidden model reasoning.
 """
 
 import json
 import logging
 from dataclasses import dataclass
 
-import httpx
-from google import genai
+from openai import AsyncOpenAI
 
 from app.config import settings
 
@@ -32,19 +31,21 @@ Analyze the following security finding and provide a detailed, traceable assessm
 ```
 
 ## Instructions
-Think step by step. For each step, explain your reasoning clearly.
+Assess the finding using the evidence provided. Do not reveal hidden chain-of-thought
+or private reasoning. Instead, give a concise, evidence-based audit summary that a
+human reviewer can verify.
 
-1. **Understand the finding**: What type of vulnerability is reported? What is the affected component?
-2. **Assess real severity**: Based on the context (not just the tool's label), what is the actual risk? Consider exploitability, impact, and attack surface.
-3. **Check for false positive indicators**: Are there signs this could be a false positive? (e.g., sanitized input, framework protections, test code, etc.)
-4. **Final decision**: Based on your analysis, classify this finding.
-5. **Suggested action**: What specific remediation or next step do you recommend?
+1. Identify the vulnerability type and affected component.
+2. Assess practical severity considering exploitability, impact, and attack surface.
+3. Note concrete false-positive indicators, if any.
+4. Classify the finding.
+5. Propose a specific remediation or next step.
 
 ## Required Output Format
 Respond ONLY with a valid JSON object (no markdown, no extra text) with this exact structure:
 
 {{
-    "chain_of_thought": "Your complete step-by-step reasoning as a single string. Be thorough — this will be audited by humans.",
+    "analysis_summary": "A concise, evidence-based explanation suitable for an audit record.",
     "final_decision": "amenaza_confirmada | falso_positivo | requiere_revision_humana",
     "severity_assessed": "critical | high | medium | low | info",
     "confidence_score": 0.85,
@@ -59,7 +60,7 @@ IMPORTANT: final_decision must be exactly one of: amenaza_confirmada, falso_posi
 @dataclass
 class LLMResponse:
     """Structured result from the LLM analysis."""
-    chain_of_thought: str
+    analysis_summary: str
     final_decision: str
     severity_assessed: str
     confidence_score: float
@@ -69,21 +70,20 @@ class LLMResponse:
     raw_response: str
 
 
+class LLMConfigurationError(RuntimeError):
+    """Raised when the OpenAI integration has not been configured."""
+
+
 class LLMService:
     """
     Handles LLM interactions for vulnerability analysis.
-    Supports Gemini API and Ollama (local).
+    Uses the OpenAI API with a project-provided API key.
     """
 
     def __init__(self):
-        self.provider = settings.LLM_PROVIDER
-
-        if self.provider == "gemini":
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            self.model = settings.GEMINI_MODEL
-        else:
-            self.ollama_url = settings.OLLAMA_BASE_URL
-            self.model = settings.OLLAMA_MODEL
+        self.provider = "openai"
+        self.client: AsyncOpenAI | None = None
+        self.model = settings.OPENAI_MODEL
 
     def _build_prompt(self, source: str, raw_payload: dict) -> str:
         """Build the analysis prompt with the finding data injected."""
@@ -100,16 +100,15 @@ class LLMService:
         prompt = self._build_prompt(source, raw_payload)
         logger.info(f"Sending finding to {self.provider} ({self.model}) for analysis...")
 
-        if self.provider == "gemini":
-            raw_text = await self._call_gemini(prompt)
-        else:
-            raw_text = await self._call_ollama(prompt)
+        raw_text = await self._call_openai(prompt)
 
         # Parse the JSON response from the LLM
         parsed = self._parse_response(raw_text)
 
         return LLMResponse(
-            chain_of_thought=parsed.get("chain_of_thought", "No reasoning provided"),
+            analysis_summary=parsed.get(
+                "analysis_summary", "No audit summary was provided."
+            ),
             final_decision=parsed.get("final_decision", "requiere_revision_humana"),
             severity_assessed=parsed.get("severity_assessed", "medium"),
             confidence_score=min(max(float(parsed.get("confidence_score", 0.5)), 0.0), 1.0),
@@ -119,35 +118,33 @@ class LLMService:
             raw_response=raw_text,
         )
 
-    async def _call_gemini(self, prompt: str) -> str:
-        """Call Gemini API using the google-genai SDK (async)."""
-        response = await self.client.aio.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                temperature=0.2,  # Low temperature for consistent, analytical outputs
-                max_output_tokens=2048,
-            ),
-        )
-        return response.text
-
-    async def _call_ollama(self, prompt: str) -> str:
-        """Call Ollama local instance via its REST API."""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.2,
-                        "num_predict": 2048,
-                    },
-                },
+    async def _call_openai(self, prompt: str) -> str:
+        """Call OpenAI and require a JSON object response."""
+        if not settings.OPENAI_API_KEY:
+            raise LLMConfigurationError(
+                "OPENAI_API_KEY is not configured. Add it to .env before analyzing findings."
             )
-            response.raise_for_status()
-            return response.json()["response"]
+
+        if self.client is None:
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a senior application-security analyst. "
+                        "Return only valid JSON and never expose hidden chain-of-thought."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=1200,
+        )
+        return response.choices[0].message.content or "{}"
 
     def _parse_response(self, raw_text: str) -> dict:
         """
@@ -172,9 +169,12 @@ class LLMService:
             logger.warning(f"Failed to parse LLM response as JSON: {e}")
             logger.debug(f"Raw response: {raw_text}")
 
-            # Fallback: wrap the raw text as chain_of_thought
+            # Fallback: preserve the raw response as an audit summary.
             return {
-                "chain_of_thought": f"[RAW LLM OUTPUT - JSON parsing failed]\n\n{raw_text}",
+                "analysis_summary": (
+                    "[RAW LLM OUTPUT - JSON parsing failed]\n\n"
+                    f"{raw_text}"
+                ),
                 "final_decision": "requiere_revision_humana",
                 "severity_assessed": "medium",
                 "confidence_score": 0.3,

@@ -1,4 +1,4 @@
-"""Decision model — stores LLM analysis results with full Chain of Thought."""
+"""Decision model — stores LLM analysis results with an auditable summary."""
 
 import uuid
 from datetime import datetime, timezone
@@ -19,13 +19,13 @@ class Decision(Base):
         Uuid(), ForeignKey("findings.id"), nullable=False
     )
     llm_model: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="e.g. 'gemini-2.0-flash', 'llama3-ollama'"
+        String(100), nullable=False, comment="e.g. 'openai/gpt-4.1-mini'"
     )
     prompt_used: Mapped[str] = mapped_column(
         Text, nullable=False, comment="Exact prompt sent to the LLM for reproducibility"
     )
-    chain_of_thought: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="Complete step-by-step reasoning"
+    analysis_summary: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="Concise, evidence-based audit rationale"
     )
     final_decision: Mapped[str] = mapped_column(
         String(30),

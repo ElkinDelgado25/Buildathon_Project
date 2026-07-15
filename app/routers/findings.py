@@ -11,6 +11,7 @@ from app.models import Finding
 from app.schemas.finding import SimulatedFinding, FindingResponse
 from app.schemas.decision import DecisionDetail
 from app.services.analysis_service import AnalysisService
+from app.services.llm_service import LLMConfigurationError
 
 router = APIRouter(prefix="/findings", tags=["Findings & Analysis"])
 
@@ -23,8 +24,8 @@ analysis_service = AnalysisService()
     summary="Analyze a security finding",
     description=(
         "Receives a security finding (real or simulated), sends it to the LLM "
-        "for Chain of Thought analysis, and persists both the raw finding and "
-        "the complete decision with reasoning. This is the core endpoint of the agent."
+        "for an evidence-based audit summary, and persists both the raw finding "
+        "and the complete decision. This is the core endpoint of the agent."
     ),
 )
 async def analyze_finding(
@@ -37,8 +38,8 @@ async def analyze_finding(
     Flow:
     1. Receives a finding payload (from a sensor or simulated)
     2. Persists the raw finding immutably
-    3. Sends to LLM with structured prompt requesting Chain of Thought
-    4. Persists the decision with full reasoning
+    3. Sends to LLM with a structured prompt requesting an audit summary
+    4. Persists the decision and its evidence-based rationale
     5. Returns the complete decision for immediate review
     """
     try:
@@ -52,6 +53,8 @@ async def analyze_finding(
         detail = await analysis_service.get_decision_detail(decision.id, db)
         return detail
 
+    except LLMConfigurationError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,

@@ -23,14 +23,14 @@ class DecisionResponse(BaseModel):
 
 class DecisionDetail(BaseModel):
     """
-    Full decision with Chain of Thought — the core traceability view.
+    Full decision with an evidence-based audit summary.
     This is what an auditor sees when reviewing AI decisions.
     """
     id: UUID
     finding_id: UUID
     llm_model: str
     prompt_used: str
-    chain_of_thought: str
+    analysis_summary: str
     final_decision: str
     severity_assessed: Optional[str] = None
     confidence_score: Optional[float] = None

@@ -1,10 +1,7 @@
 """
 Async database engine and session management.
-Uses SQLAlchemy 2.0 async API with asyncpg driver (PostgreSQL)
-or aiosqlite (SQLite for local development).
+Uses SQLAlchemy 2.0 async API with the asyncpg PostgreSQL driver.
 """
-
-import json
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -16,26 +13,12 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 # ── Engine ────────────────────────────────────────────────────
-# SQLite doesn't support pool_size/max_overflow, so conditionally apply them
-_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
-
-_engine_kwargs = {
-    "echo": settings.APP_ENV == "development",
-}
-
-if not _is_sqlite:
-    _engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 20,
-    })
-else:
-    # SQLite needs json_serializer for dict columns
-    _engine_kwargs["json_serializer"] = json.dumps
-    _engine_kwargs["json_deserializer"] = json.loads
-
 engine = create_async_engine(
     settings.DATABASE_URL,
-    **_engine_kwargs,
+    echo=settings.APP_ENV == "development",
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
 )
 
 # ── Session factory ──────────────────────────────────────────

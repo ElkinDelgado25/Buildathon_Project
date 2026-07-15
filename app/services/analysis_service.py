@@ -3,7 +3,7 @@ Analysis Service — orchestrates the full analysis pipeline.
 
 1. Persist the raw finding
 2. Send to LLM for analysis
-3. Persist the decision with Chain of Thought
+3. Persist the decision with an audit summary
 4. Return the complete result
 """
 
@@ -31,7 +31,7 @@ class AnalysisService:
         Full analysis pipeline:
         1. Store the raw finding (immutable record)
         2. Call the LLM for structured analysis
-        3. Store the decision with full Chain of Thought
+        3. Store the decision with an evidence-based audit summary
         """
         # ── Step 1: Persist the raw finding ──────────────────
         finding = Finding(source=source, raw_payload=raw_payload)
@@ -53,7 +53,7 @@ class AnalysisService:
             finding_id=finding.id,
             llm_model=llm_result.model_used,
             prompt_used=llm_result.prompt_used,
-            chain_of_thought=llm_result.chain_of_thought,
+            analysis_summary=llm_result.analysis_summary,
             final_decision=llm_result.final_decision,
             severity_assessed=llm_result.severity_assessed,
             confidence_score=llm_result.confidence_score,
@@ -67,7 +67,7 @@ class AnalysisService:
         return decision
 
     async def get_decision_detail(self, decision_id: UUID, db: AsyncSession) -> Decision | None:
-        """Fetch a decision with its full Chain of Thought and original finding."""
+        """Fetch a decision with its audit summary and original finding."""
         stmt = (
             select(Decision)
             .options(selectinload(Decision.finding))
