@@ -145,6 +145,15 @@ at `assent/Logo-terminal.png` (a transparent-background PNG) or `assent/Logo.png
 The `dashboard` command uses it automatically and falls back to the built-in ASCII
 banner when it is unavailable.
 
+## 🌐 Web console
+
+The standalone frontend lives in `frontend/`, so it does not affect the FastAPI
+image or Docker Compose service. Open `frontend/index.html` in a browser for local
+design work, then enter `http://localhost:8000` in **API endpoint**. The Render
+Blueprint deploys it as the `cybersecurity-agent-console` static site. In the
+deployed page, enter the public Render URL of the API once; it is saved locally in
+the browser. The browser never receives `OPENAI_API_KEY`.
+
 ## 🧪 Example: Analyze a Simulated Finding
 
 ```bash

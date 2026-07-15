@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="CyberSec Agent security operations console" />
+    <title>CyberSec Agent · SOC Console</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#dashboard" aria-label="CyberSec Agent dashboard">
+          <span class="brand-mark">⌬</span>
+          <span><strong>CYBERSEC</strong><small>AGENT · SOC CONSOLE</small></span>
+        </a>
+        <nav aria-label="Primary navigation">
+          <button class="nav-item active" data-view="dashboard">◈ Dashboard</button>
+          <button class="nav-item" data-view="findings">⌁ Analyze finding</button>
+          <button class="nav-item" data-view="decisions">◫ Decisions</button>
+          <button class="nav-item" data-view="reviews">✓ Human reviews</button>
+          <button class="nav-item" data-view="audits">▣ Audit plans</button>
+        </nav>
+        <div class="connection-card">
+          <label for="api-url">API endpoint</label>
+          <input id="api-url" type="url" spellcheck="false" placeholder="https://api.example.com" />
+          <button id="connect-button" class="button secondary">Connect API</button>
+          <p id="connection-status" class="status neutral">Not connected</p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">SECURITY OPERATIONS</p>
+            <h1 id="page-title">Command dashboard</h1>
+          </div>
+          <button id="refresh-button" class="button secondary">↻ Refresh</button>
+        </header>
+
+        <section id="dashboard" class="view active">
+          <div class="hero-grid">
+            <article class="terminal-card">
+              <div class="terminal-bar"><span></span><span></span><span></span><b>live-system-status</b></div>
+              <pre id="terminal-output">$ cybersec-agent dashboard
+<span class="muted">Connect an API endpoint to load live operations data.</span></pre>
+            </article>
+            <article class="health-card">
+              <p class="eyebrow">SYSTEM HEALTH</p>
+              <div id="health-status" class="health-value">● Waiting</div>
+              <dl id="health-details"><dt>Database</dt><dd>—</dd><dt>LLM provider</dt><dd>—</dd></dl>
+            </article>
+          </div>
+
+          <div class="metrics-grid" id="metrics-grid">
+            <article class="metric"><span>OpenAI tokens</span><strong id="metric-tokens">—</strong><small>Total recorded</small></article>
+            <article class="metric"><span>LLM decisions</span><strong id="metric-decisions">—</strong><small>Analyzed findings</small></article>
+            <article class="metric"><span>Findings</span><strong id="metric-findings">—</strong><small>Latest records</small></article>
+            <article class="metric"><span>Human reviews</span><strong id="metric-reviews">—</strong><small>Latest records</small></article>
+          </div>
+
+          <section class="panel">
+            <div class="section-heading"><div><p class="eyebrow">TRACEABILITY</p><h2>Latest AI decisions</h2></div><button class="text-button" data-go="decisions">View all →</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Decision</th><th>Verdict</th><th>Severity</th><th>Confidence</th><th>Created</th></tr></thead><tbody id="dashboard-decisions"><tr><td colspan="5" class="empty">Connect the API to load decisions.</td></tr></tbody></table></div>
+          </section>
+        </section>
+
+        <section id="findings" class="view">
+          <div class="section-heading"><div><p class="eyebrow">LLM ANALYSIS</p><h2>Analyze a security finding</h2><p>Submit SonarQube or OWASP ZAP evidence. The OpenAI key remains on the backend.</p></div></div>
+          <form id="finding-form" class="panel form-grid">
+            <label>Scanner source<select name="source"><option value="sonarqube">SonarQube · SAST</option><option value="zap">OWASP ZAP · DAST</option></select></label>
+            <label class="full">Raw finding JSON<textarea name="raw_payload" rows="14" spellcheck="false">{
+  "rule": "python:S5131",
+  "severity": "HIGH",
+  "component": "src/api/users.py",
+  "line": 18,
+  "message": "Possible SQL query built with user input",
+  "type": "VULNERABILITY",
+  "tags": ["sql-injection", "cwe-89"]
+}</textarea></label>
+            <div class="form-actions full"><button class="button primary" type="submit">Analyze with OpenAI →</button><span class="form-hint">The result becomes an auditable decision.</span></div>
+          </form>
+          <article id="analysis-result" class="panel hidden"></article>
+        </section>
+
+        <section id="decisions" class="view">
+          <div class="section-heading"><div><p class="eyebrow">AI DECISIONS</p><h2>Decision register</h2></div><button id="load-decisions" class="button secondary">Refresh decisions</button></div>
+          <div class="panel table-wrap"><table><thead><tr><th>Decision</th><th>Verdict</th><th>Severity</th><th>Confidence</th><th>Tokens</th><th></th></tr></thead><tbody id="decisions-table"></tbody></table></div>
+          <article id="decision-detail" class="panel hidden"></article>
+        </section>
+
+        <section id="reviews" class="view">
+          <div class="section-heading"><div><p class="eyebrow">HUMAN IN THE LOOP</p><h2>Review an AI decision</h2></div></div>
+          <form id="review-form" class="panel form-grid compact">
+            <label>Decision ID<input name="decision_id" required placeholder="UUID from Decisions" /></label>
+            <label>Reviewer<input name="reviewed_by" required placeholder="alex" maxlength="100" /></label>
+            <label>Verdict<select name="review_verdict"><option value="agree">Agree</option><option value="disagree">Disagree</option><option value="escalate">Escalate</option></select></label>
+            <label class="full">Audit comment<textarea name="review_comment" rows="4" placeholder="Evidence or rationale for this review"></textarea></label>
+            <div class="form-actions full"><button class="button primary" type="submit">Record human review</button></div>
+          </form>
+          <section class="panel"><div class="section-heading"><h2>Recent reviews</h2><button id="load-reviews" class="button secondary">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Reviewer</th><th>Verdict</th><th>Comment</th><th>Reviewed</th></tr></thead><tbody id="reviews-table"></tbody></table></div></section>
+        </section>
+
+        <section id="audits" class="view">
+          <div class="section-heading"><div><p class="eyebrow">AUTHORIZED AUDITS</p><h2>Plan a SAST or DAST audit</h2><p>DAST targets must be owned or explicitly authorized.</p></div></div>
+          <form id="audit-form" class="panel form-grid compact">
+            <label class="full">Target repository or URL<input name="target" required placeholder="/home/alex/project or https://staging.example.com" /></label>
+            <label>Audit type<select name="scan_type"><option value="sast">SAST · Source code</option><option value="dast">DAST · Running application</option><option value="full">Full audit</option></select></label>
+            <label class="checkbox"><input name="dast_authorized" type="checkbox" /> I have authorization for active DAST testing</label>
+            <div class="form-actions full"><button class="button primary" type="submit">Create audit plan</button></div>
+          </form>
+          <article id="audit-result" class="panel hidden"></article>
+        </section>
+      </main>
+    </div>
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
