@@ -8,23 +8,42 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <section id="landing" class="landing-screen">
+      <div class="landing-grid"></div>
+      <div class="landing-content">
+        <a class="brand landing-brand" href="#"><img class="brand-logo" src="assets/Logo-terminal.png" alt="CyberSec Agent logo" /><span><strong>CYBERSEC</strong><small>AGENT · DEVSECOPS AUDIT PLATFORM</small></span></a>
+        <p class="eyebrow">AUTHORIZED SECURITY OPERATIONS</p>
+        <h1>Turn scanner signals into accountable security decisions.</h1>
+        <p class="landing-copy">Open your command center to analyze SAST/DAST findings with AI, preserve evidence, and keep a human review in every audit trail.</p>
+        <form id="workspace-form" class="workspace-form">
+          <label>Operator / analyst name<input id="operator-name" required maxlength="100" placeholder="alex" autocomplete="name" /></label>
+          <label>API endpoint<input id="landing-api-url" type="url" required spellcheck="false" placeholder="http://localhost:8000" /></label>
+          <button class="button primary" type="submit">Enter command center →</button>
+        </form>
+        <p class="landing-footnote">Your OpenAI API key stays securely on the backend. Use only authorized audit targets.</p>
+      </div>
+      <div class="landing-stats"><span>◈ SAST + DAST</span><span>⌁ OpenAI analysis</span><span>✓ Human review</span></div>
+    </section>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#dashboard" aria-label="CyberSec Agent dashboard">
-          <span class="brand-mark">⌬</span>
+        <a class="brand" href="#terminal" aria-label="CyberSec Agent terminal">
+          <img class="brand-logo" src="assets/Logo-terminal.png" alt="CyberSec Agent logo" />
           <span><strong>CYBERSEC</strong><small>AGENT · SOC CONSOLE</small></span>
         </a>
         <nav aria-label="Primary navigation">
-          <button class="nav-item active" data-view="dashboard">◈ Dashboard</button>
+          <button class="nav-item active" data-view="terminal">$_ Web terminal</button>
+          <button class="nav-item" data-view="dashboard">◈ Dashboard</button>
           <button class="nav-item" data-view="findings">⌁ Analyze finding</button>
           <button class="nav-item" data-view="decisions">◫ Decisions</button>
           <button class="nav-item" data-view="reviews">✓ Human reviews</button>
           <button class="nav-item" data-view="audits">▣ Audit plans</button>
         </nav>
         <div class="connection-card">
+          <p class="operator-label">OPERATOR <strong id="operator-display">—</strong></p>
           <label for="api-url">API endpoint</label>
           <input id="api-url" type="url" spellcheck="false" placeholder="https://api.example.com" />
           <button id="connect-button" class="button secondary">Connect API</button>
+          <button id="switch-workspace" class="text-button">Change workspace</button>
           <p id="connection-status" class="status neutral">Not connected</p>
         </div>
       </aside>
@@ -38,7 +57,20 @@
           <button id="refresh-button" class="button secondary">↻ Refresh</button>
         </header>
 
-        <section id="dashboard" class="view active">
+        <section id="terminal" class="view active">
+          <div class="section-heading"><div><p class="eyebrow">INTERACTIVE WEB CLI</p><h2>Audit command terminal</h2><p>Run API-backed commands from this workspace. Type <code>help</code> to see examples.</p></div><button id="clear-terminal" class="button secondary">Clear terminal</button></div>
+          <article class="web-terminal">
+            <div class="terminal-bar"><span></span><span></span><span></span><b>cybersec-agent · web console</b></div>
+            <div id="web-terminal-output" class="web-terminal-output" aria-live="polite"></div>
+            <form id="terminal-form" class="terminal-input-row">
+              <span id="terminal-prompt" class="terminal-prompt">operator@cybersec:~$</span>
+              <input id="terminal-command" autocomplete="off" spellcheck="false" aria-label="Terminal command" placeholder="help" />
+            </form>
+          </article>
+          <div class="terminal-shortcuts"><button data-command="help">help</button><button data-command="dashboard">dashboard</button><button data-command="decisions list">decisions list</button><button data-command="usage">usage</button><button data-command="reviews list">reviews list</button></div>
+        </section>
+
+        <section id="dashboard" class="view">
           <div class="hero-grid">
             <article class="terminal-card">
               <div class="terminal-bar"><span></span><span></span><span></span><b>live-system-status</b></div>
