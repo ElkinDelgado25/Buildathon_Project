@@ -16,6 +16,9 @@ class DecisionResponse(BaseModel):
     severity_assessed: Optional[str] = None
     confidence_score: Optional[float] = None
     suggested_action: Optional[str] = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -35,6 +38,9 @@ class DecisionDetail(BaseModel):
     severity_assessed: Optional[str] = None
     confidence_score: Optional[float] = None
     suggested_action: Optional[str] = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
     created_at: datetime
 
     # Nested original finding for full context
@@ -55,3 +61,12 @@ class FindingInDecision(BaseModel):
 
 # Rebuild to resolve forward reference
 DecisionDetail.model_rebuild()
+
+
+class TokenUsageSummary(BaseModel):
+    """Aggregate OpenAI usage recorded for vulnerability analyses."""
+
+    analyzed_decisions: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int

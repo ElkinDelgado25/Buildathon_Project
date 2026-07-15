@@ -10,6 +10,8 @@ import shlex
 import subprocess
 import sys
 import textwrap
+import threading
+import time
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -93,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("health", help="Check API and database health")
     commands.add_parser("dashboard", help="Show a compact SOC-style operational overview")
     commands.add_parser("console", help="Open a persistent interactive SOC console (Ctrl+C to close)")
+    commands.add_parser("usage", help="Show cumulative OpenAI token usage")
 
     findings = commands.add_parser("findings", help="Analyze and inspect findings")
     finding_commands = findings.add_subparsers(dest="findings_command", required=True)
@@ -202,12 +205,17 @@ def execute(client: APIClient, args: argparse.Namespace) -> tuple[Any, str]:
         decisions = client.request("GET", "/api/v1/decisions/", params={"limit": 5, "offset": 0})
         findings = client.request("GET", "/api/v1/findings/", params={"limit": 5, "offset": 0})
         reviews = client.request("GET", "/api/v1/audit/reviews", params={"limit": 5, "offset": 0})
+        token_usage = client.request("GET", "/api/v1/decisions/usage")
         return {
             "health": health,
             "recent_decisions": decisions,
             "recent_findings": findings,
             "recent_reviews": reviews,
+            "token_usage": token_usage,
         }, "dashboard"
+
+    if args.command == "usage":
+        return client.request("GET", "/api/v1/decisions/usage"), "detail"
 
     if args.command == "findings":
         if args.findings_command == "list":
@@ -319,6 +327,54 @@ class Theme:
         return self.paint(value, "2")
 
 
+class ActionStatus:
+    """A lightweight terminal activity box for long-running console actions."""
+
+    frames = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+    width = 48
+
+    def __init__(self, label: str, theme: Theme) -> None:
+        self.label = _short(label, 36)
+        self.theme = theme
+        self.active = False
+        self.thread: threading.Thread | None = None
+
+    def _line(self, symbol: str, message: str, style: str = "info") -> str:
+        content = f" {symbol} {message}"[: self.width - 2]
+        line = f"│{content.ljust(self.width - 2)}│"
+        return getattr(self.theme, style)(line)
+
+    def _spin(self) -> None:
+        index = 0
+        while self.active:
+            line = self._line(self.frames[index % len(self.frames)], f"Ejecutando: {self.label}")
+            sys.stdout.write(f"\r{line}")
+            sys.stdout.flush()
+            index += 1
+            time.sleep(0.12)
+
+    def __enter__(self) -> "ActionStatus":
+        if not sys.stdout.isatty():
+            return self
+        self.active = True
+        print(self.theme.info("┌" + "─" * (self.width - 2) + "┐"))
+        self.thread = threading.Thread(target=self._spin, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type: object, *_: object) -> None:
+        if not self.active:
+            return
+        self.active = False
+        if self.thread:
+            self.thread.join()
+        if exc_type is None:
+            print("\r" + self._line("✓", f"Completado: {self.label}", "good"))
+        else:
+            print("\r" + self._line("✗", f"Error: {self.label}", "bad"))
+        print(self.theme.info("└" + "─" * (self.width - 2) + "┘"))
+
+
 def _status(value: Any, theme: Theme) -> str:
     text = _short(value)
     lowered = text.lower()
@@ -422,6 +478,14 @@ def _print_dashboard(data: dict[str, Any], theme: Theme) -> None:
     print(f"  Findings:  {len(data['recent_findings']):>2} visible")
     print(f"  Decisions: {len(data['recent_decisions']):>2} visible")
     print(f"  Reviews:   {len(data['recent_reviews']):>2} visible")
+    usage = data["token_usage"]
+    print("\n" + theme.info("OPENAI TOKEN USAGE"))
+    print(
+        f"  Total:  {usage['total_tokens']:,}  "
+        f"Input: {usage['prompt_tokens']:,}  "
+        f"Output: {usage['completion_tokens']:,}  "
+        f"Analyses: {usage['analyzed_decisions']:,}"
+    )
     if data["recent_decisions"]:
         print("\n" + theme.info("LATEST DECISIONS"))
         for decision in data["recent_decisions"]:
@@ -472,6 +536,7 @@ def _console_help() -> None:
         "  decisions list | decisions get <id>\n"
         "  audit review <decision-id> --by <name> --verdict agree|disagree|escalate\n"
         "  audit decision <decision-id>\n"
+        "  usage                                  Show cumulative OpenAI token usage\n"
         "  rules list | rules sync sonarqube|zap\n"
         "  audits plan <target> --type sast|dast|full\n"
         "\nType help to show this message again. Press Ctrl+C to close the console.\n"
@@ -481,10 +546,12 @@ def _console_help() -> None:
 def run_console(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Run commands against the API without leaving the SOC terminal session."""
     print("Opening CyberSec Agent console. Press Ctrl+C to close.")
+    theme = Theme(not args.no_color)
     with APIClient(args.api_url, args.timeout) as client:
         try:
             dashboard_args = parser.parse_args(["dashboard"])
-            data, display_type = execute(client, dashboard_args)
+            with ActionStatus("Cargando dashboard", theme):
+                data, display_type = execute(client, dashboard_args)
             render(data, display_type, args.json, color=not args.no_color)
             _console_help()
             while True:
@@ -510,7 +577,8 @@ def run_console(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
                     print("You are already in the interactive console.")
                     continue
                 try:
-                    data, display_type = execute(client, command_args)
+                    with ActionStatus(line, theme):
+                        data, display_type = execute(client, command_args)
                     render(data, display_type, args.json or command_args.json, color=not args.no_color)
                 except CLIError as exc:
                     print(f"error: {exc}", file=sys.stderr)

@@ -113,6 +113,30 @@ class CLITests(unittest.TestCase):
         self.assertEqual(request_seen.method, "POST")
         self.assertEqual(request_seen.url.path, "/api/v1/rules/sync/sonarqube")
 
+    def test_usage_requests_aggregate_token_endpoint(self) -> None:
+        request_seen = None
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal request_seen
+            request_seen = request
+            return httpx.Response(
+                200,
+                json={
+                    "analyzed_decisions": 2,
+                    "prompt_tokens": 100,
+                    "completion_tokens": 40,
+                    "total_tokens": 140,
+                },
+            )
+
+        args = build_parser().parse_args(["usage"])
+        with APIClient("http://test", transport=httpx.MockTransport(handler)) as client:
+            data, display_type = execute(client, args)
+
+        self.assertEqual(display_type, "detail")
+        self.assertEqual(data["total_tokens"], 140)
+        self.assertEqual(request_seen.url.path, "/api/v1/decisions/usage")
+
 
 if __name__ == "__main__":
     unittest.main()

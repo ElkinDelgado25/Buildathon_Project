@@ -68,6 +68,9 @@ class LLMResponse:
     prompt_used: str
     model_used: str
     raw_response: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 class LLMConfigurationError(RuntimeError):
@@ -100,7 +103,7 @@ class LLMService:
         prompt = self._build_prompt(source, raw_payload)
         logger.info(f"Sending finding to {self.provider} ({self.model}) for analysis...")
 
-        raw_text = await self._call_openai(prompt)
+        raw_text, prompt_tokens, completion_tokens, total_tokens = await self._call_openai(prompt)
 
         # Parse the JSON response from the LLM
         parsed = self._parse_response(raw_text)
@@ -116,9 +119,12 @@ class LLMService:
             prompt_used=prompt,
             model_used=f"{self.provider}/{self.model}",
             raw_response=raw_text,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
         )
 
-    async def _call_openai(self, prompt: str) -> str:
+    async def _call_openai(self, prompt: str) -> tuple[str, int, int, int]:
         """Call OpenAI and require a JSON object response."""
         if not settings.OPENAI_API_KEY:
             raise LLMConfigurationError(
@@ -144,7 +150,22 @@ class LLMService:
             temperature=0.2,
             max_tokens=1200,
         )
-        return response.choices[0].message.content or "{}"
+        usage = response.usage
+        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+        logger.info(
+            "OpenAI usage: input=%s output=%s total=%s",
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
+        return (
+            response.choices[0].message.content or "{}",
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
 
     def _parse_response(self, raw_text: str) -> dict:
         """

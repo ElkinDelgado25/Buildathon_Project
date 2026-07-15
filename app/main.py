@@ -42,6 +42,17 @@ async def lifespan(app: FastAPI):
     if settings.APP_ENV == "development":
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # create_all does not add columns to existing development tables.
+            # Keep this additive upgrade safe for local Docker volumes.
+            from sqlalchemy import text
+
+            for column in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                await conn.execute(
+                    text(
+                        f"ALTER TABLE decisions ADD COLUMN IF NOT EXISTS {column} "
+                        "INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
             logger.info("   ✅ Database tables created/verified")
 
     yield

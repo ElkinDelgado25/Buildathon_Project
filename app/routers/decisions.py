@@ -6,10 +6,12 @@ Provides endpoints to review AI decisions and their audit summaries.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.decision import DecisionResponse, DecisionDetail
+from app.models import Decision
+from app.schemas.decision import DecisionResponse, DecisionDetail, TokenUsageSummary
 from app.services.analysis_service import AnalysisService
 
 router = APIRouter(prefix="/decisions", tags=["Decisions & Traceability"])
@@ -31,6 +33,29 @@ async def list_decisions(
     """List all decisions with pagination."""
     decisions = await analysis_service.list_decisions(db, limit=limit, offset=offset)
     return decisions
+
+
+@router.get(
+    "/usage",
+    response_model=TokenUsageSummary,
+    summary="Get cumulative OpenAI token usage",
+)
+async def get_token_usage(db: AsyncSession = Depends(get_db)):
+    """Return tokens reported by OpenAI for all persisted LLM decisions."""
+    stmt = select(
+        func.count(Decision.id),
+        func.coalesce(func.sum(Decision.prompt_tokens), 0),
+        func.coalesce(func.sum(Decision.completion_tokens), 0),
+        func.coalesce(func.sum(Decision.total_tokens), 0),
+    )
+    result = await db.execute(stmt)
+    count, prompt_tokens, completion_tokens, total_tokens = result.one()
+    return TokenUsageSummary(
+        analyzed_decisions=int(count),
+        prompt_tokens=int(prompt_tokens),
+        completion_tokens=int(completion_tokens),
+        total_tokens=int(total_tokens),
+    )
 
 
 @router.get(

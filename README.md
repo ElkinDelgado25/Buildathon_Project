@@ -111,6 +111,9 @@ python -m app.cli findings list --source sonarqube
 python -m app.cli decisions list
 python -m app.cli decisions get DECISION_ID
 
+# Inspect recorded OpenAI input/output token usage
+python -m app.cli usage
+
 # Record and inspect a human review
 python -m app.cli audit review DECISION_ID --by alice --verdict agree --comment "Verified"
 python -m app.cli audit decision DECISION_ID

@@ -58,6 +58,9 @@ class AnalysisService:
             severity_assessed=llm_result.severity_assessed,
             confidence_score=llm_result.confidence_score,
             suggested_action=llm_result.suggested_action,
+            prompt_tokens=llm_result.prompt_tokens,
+            completion_tokens=llm_result.completion_tokens,
+            total_tokens=llm_result.total_tokens,
         )
         db.add(decision)
         await db.flush()
