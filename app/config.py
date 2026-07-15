@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────
     APP_ENV: Literal["development", "staging", "production"] = "development"
     LOG_LEVEL: str = "INFO"
+    CORS_ORIGINS: str = "http://localhost:8000,http://localhost:3000"
 
     model_config = {
         "env_file": ".env",

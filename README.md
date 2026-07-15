@@ -49,28 +49,39 @@ python -m venv .venv
 
 Use the `localhost` database URL already provided in `.env.example` for this mode.
 
-### Deploy on Render
+### Deploy on Vercel with Supabase
 
-The repository includes `render.yaml`, which creates a Docker web service and
-a managed PostgreSQL database. It is intended for the hackathon MVP; the CLI
-remains the primary user interface.
+Deploy the API and the static console as two Vercel projects:
 
-1. Push this repository to GitHub.
-2. In Render, create a **Blueprint** and select the repository.
-3. Set `OPENAI_API_KEY` when Render prompts for the secret, then apply the Blueprint.
-4. After deployment, copy the public service URL and point the CLI to it:
+1. Create the API project with the repository root (`.`) and the **FastAPI** preset.
+2. In Supabase, copy the **Transaction pooler** connection string (port `6543`).
+   This is required because Vercel Functions use short-lived, IPv4-compatible
+   connections.
+3. In the API project's Production environment variables, set:
+   - `DATABASE_URL` to the Supabase Transaction pooler URL.
+   - `OPENAI_API_KEY` to a valid OpenAI API key.
+   - `APP_ENV=production`
+   - `CORS_ORIGINS` to the deployed console URL, for example
+     `https://buildathon-project.vercel.app`.
+4. Apply the schema once from a machine with the Supabase URL available:
 
 ```powershell
-python -m app.cli --api-url https://your-service.onrender.com health
+$env:DATABASE_URL = "postgresql://..."
+alembic upgrade head
 ```
 
-For a fresh MVP database, Render starts with `APP_ENV=development` so the API
-creates its tables. Before production use, replace this bootstrap behavior
-with versioned Alembic migrations and add CLI/API-key authentication.
+5. Create the console project with root directory `frontend` and the **Other**
+   preset. It requires no build command and no secrets.
+6. After deployment, copy the API URL and enter it in the console's
+   **API endpoint** field. You can also use it with the CLI:
+
+```powershell
+python -m app.cli --api-url https://your-api.vercel.app health
+```
 
 The current `docker-compose.yml` is for local development only. SonarQube and
-OWASP ZAP are not deployed by this Blueprint; configure their reachable URLs
-and tokens in Render only when the scanner integrations are ready.
+OWASP ZAP are not deployed by Vercel; configure their public, authorized URLs
+and tokens only when the scanner integrations are ready.
 
 ## 📡 Core Endpoints
 
@@ -87,6 +98,27 @@ and tokens in Render only when the scanner integrations are ready.
 | `GET` | `/api/v1/audits/{id}/trace` | Retrieve normalized evidence and the policy decision |
 | `GET` | `/api/v1/rules` | List the cached SonarQube/ZAP rule catalog |
 | `POST` | `/api/v1/rules/sync/{source}` | Synchronize configured scanner rules |
+| `POST` | `/api/v1/commands` | Execute a fixed Web CLI command safely |
+
+### Web CLI command API
+
+The graphical Web CLI sends its terminal input to `POST /api/v1/commands`.
+Only documented commands are accepted; it never executes shell commands.
+
+```text
+/help
+/status
+/dashboard
+/owasp audit A03
+/findings list
+/decisions list
+/decisions show <decision-id>
+/review <decision-id> <agree|disagree|escalate>
+```
+
+`/owasp audit A01` through `A10` requires an authorized `target` and can
+include an `instruction`. In this MVP it creates an auditable request with
+status `awaiting_evidence`; it does not claim to launch SonarQube or ZAP.
 
 ## 💻 Command-line client
 

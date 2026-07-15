@@ -27,6 +27,12 @@ class AuditRun(Base):
     dast_authorized: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, comment="Explicit DAST authorization"
     )
+    owasp_category: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, comment="Requested OWASP category, e.g. A03"
+    )
+    instruction: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Auditor-provided scope or question"
+    )
     decision: Mapped[str | None] = mapped_column(
         String(20), nullable=True, comment="'allow' | 'review' | 'block'"
     )

@@ -15,6 +15,8 @@ class AuditPlanCreate(BaseModel):
     target: str = Field(..., min_length=1, max_length=500)
     scan_type: Literal["sast", "dast", "full"]
     dast_authorized: bool = False
+    owasp_category: str | None = Field(default=None, pattern=r"^A(0[1-9]|10)$")
+    instruction: str | None = Field(default=None, max_length=2_000)
 
 
 class AuditRunResponse(BaseModel):
@@ -23,6 +25,8 @@ class AuditRunResponse(BaseModel):
     scan_type: str
     status: str
     dast_authorized: bool
+    owasp_category: str | None = None
+    instruction: str | None = None
     decision: str | None = None
     policy_reason: str | None = None
     created_at: datetime

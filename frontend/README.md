@@ -3,6 +3,11 @@
 This is a dependency-free static frontend. It calls the FastAPI backend over HTTP;
 it never contains the OpenAI API key.
 
+The interactive terminal sends only fixed commands to `POST /api/v1/commands`.
+For example: `/help`, `/status`, `/decisions list`, or
+`/owasp audit A03 --target demo-repository --instruction "Review injection"`.
+It never sends text to a system shell.
+
 ## Local design workflow
 
 Keep the API running with Docker, then serve this directory from the project root:

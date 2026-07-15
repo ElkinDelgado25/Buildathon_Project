@@ -3,7 +3,6 @@ Audit router — human review of AI decisions.
 Enables analysts to formally agree, disagree, or escalate AI decisions.
 """
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import AuditLog, Decision
+from app.models import AuditLog
 from app.schemas.audit_log import AuditLogCreate, AuditLogResponse
+from app.services.audit_service import AuditService, DecisionNotFoundError
 
 router = APIRouter(prefix="/audit", tags=["Audit & Human Review"])
+audit_service = AuditService()
 
 
 @router.post(
@@ -28,25 +29,10 @@ async def create_review(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a human review for an AI decision."""
-    # Verify the decision exists
-    stmt = select(Decision).where(Decision.id == review.decision_id)
-    result = await db.execute(stmt)
-    decision = result.scalar_one_or_none()
-
-    if not decision:
-        raise HTTPException(status_code=404, detail="Decision not found")
-
-    audit_entry = AuditLog(
-        decision_id=review.decision_id,
-        reviewed_by=review.reviewed_by,
-        review_comment=review.review_comment,
-        review_verdict=review.review_verdict,
-        reviewed_at=datetime.now(timezone.utc),
-    )
-    db.add(audit_entry)
-    await db.flush()
-
-    return audit_entry
+    try:
+        return await audit_service.create_review(review, db)
+    except DecisionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get(

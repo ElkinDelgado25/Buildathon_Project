@@ -16,6 +16,7 @@ from app.database import engine, Base
 from app.routers import (
     audit_router,
     audits_router,
+    commands_router,
     decisions_router,
     findings_router,
     rules_router,
@@ -53,6 +54,16 @@ async def lifespan(app: FastAPI):
                         "INTEGER NOT NULL DEFAULT 0"
                     )
                 )
+            for column, column_type in {
+                "owasp_category": "VARCHAR(10)",
+                "instruction": "TEXT",
+            }.items():
+                await conn.execute(
+                    text(
+                        f"ALTER TABLE audit_runs ADD COLUMN IF NOT EXISTS {column} "
+                        f"{column_type}"
+                    )
+                )
             logger.info("   ✅ Database tables created/verified")
 
     yield
@@ -77,10 +88,13 @@ app = FastAPI(
 )
 
 # ── CORS ─────────────────────────────────────────────────────
+cors_origins = [
+    origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -91,6 +105,7 @@ app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
 app.include_router(audits_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
+app.include_router(commands_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])
@@ -109,6 +124,7 @@ async def root():
             "plan_audit": "POST /api/v1/audits/plan",
             "audit_trace": "GET /api/v1/audits/{id}/trace",
             "security_rules": "GET /api/v1/rules",
+            "commands": "POST /api/v1/commands",
         },
     }
 

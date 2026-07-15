@@ -3,6 +3,7 @@ Alembic environment configuration for async SQLAlchemy.
 """
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -13,11 +14,29 @@ from alembic import context
 
 # Import models so Alembic can detect them
 from app.database import Base
-from app.models import Finding, Decision, AuditLog  # noqa: F401
+from app.models import (  # noqa: F401
+    AuditFinding,
+    AuditLog,
+    AuditRun,
+    Decision,
+    Finding,
+    SecurityRule,
+)
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://", "postgresql+asyncpg://", 1
+        )
+    # ConfigParser treats percent signs in encoded passwords as interpolation.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
@@ -36,7 +55,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

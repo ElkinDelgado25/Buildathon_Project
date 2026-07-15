@@ -15,6 +15,7 @@ from app.schemas.audit_run import (
     AuditTraceResponse,
 )
 from app.schemas.security_rule import SecurityRuleCreate, SecurityRuleResponse
+from app.schemas.command import CommandRequest, CommandResponse
 
 __all__ = [
     "FindingCreate",
@@ -31,4 +32,6 @@ __all__ = [
     "AuditTraceResponse",
     "SecurityRuleCreate",
     "SecurityRuleResponse",
+    "CommandRequest",
+    "CommandResponse",
 ]
